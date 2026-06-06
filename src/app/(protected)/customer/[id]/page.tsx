@@ -37,6 +37,7 @@ import Protected from "@/components/Protected";
 import api from "@/lib/axios";
 import Modal from "@/components/Modal";
 import FullScreenLoader from "@/components/FullScreenLoader";
+import SendMatchModal from "@/components/SendMatchModal";
 
 // Types
 interface CustomerPreferences {
@@ -97,6 +98,27 @@ interface Customer {
   preferences: CustomerPreferences;
   notes: any[];
   sentMatches: any[];
+}
+interface CustomerNote {
+  id: string;
+  content: string;
+  noteType: string;
+  customerId: string;
+  matchmakerId: string;
+
+  createdAt: Date;
+  updatedAt: Date;
+};
+interface SentMatch {
+  id: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: Date;
+  city: string;
+  gender: string;
+  education: string;
+  profession: string;
+  religion: string;
 }
 
 interface Match {
@@ -178,43 +200,47 @@ export default function CustomerDetailPage() {
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [notes, setNotes] = useState<CustomerNote[]>([]);
   const [newNote, setNewNote] = useState("");
   const [activeTab, setActiveTab] = useState<"profile" | "notes" | "sent">("profile");
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [sentMatches, setSentMatches] = useState<SentMatch[]>([])
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [selectedMatchForSend, setSelectedMatchForSend] = useState<Match | null>(null);
 
   const observerTarget = useRef<HTMLDivElement>(null);
 
   // Fetch customer details
+  const fetchCustomer = async () => {
+    try {
+      const { data } = await api.get(`/customer/details/${customerId}`)
+      setCustomer(data)
+      setNotes(data?.notes ?? [])
+      setSentMatches(data?.sentMatches ?? [])
+    } catch (error) {
+      console.error("Error fetching customer:", error);
+      alert('Failed to complete the request')
+    } finally {
+      setLoading(false);
+    }
+  };
   useEffect(() => {
-    const fetchCustomer = async () => {
-      try {
-        const { data } = await api.get(`/customer/details/${customerId}`)
-        setCustomer(data)
-      } catch (error) {
-        console.error("Error fetching customer:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchCustomer();
   }, [customerId]);
 
-  // Fetch matches with infinite scroll
   const fetchMatches = async (pageNum: number) => {
     if (!hasMore) return;
 
     setLoadingMatches(true);
     const interval = setInterval(() => {
       setLoadingMessageIndex((prev) => (prev + 1) % loadingMatchMessages.length);
-    }, 2000);
+    }, 1000);
     try {
       const { data } = await api.get(`/customer/match/${customerId}?page=${pageNum}&limit=10`)
 
       if (pageNum === 1) {
         setMatches(data.matches);
-        console.log(data.matches)
       } else {
         setMatches(prev => [...prev, ...data.matches]);
       }
@@ -222,6 +248,7 @@ export default function CustomerDetailPage() {
       setHasMore(data.matches.length === 10);
     } catch (error) {
       console.error("Error fetching matches:", error);
+      alert('Failed to complete the request')
     } finally {
       setLoadingMatches(false);
       clearInterval(interval);
@@ -258,30 +285,23 @@ export default function CustomerDetailPage() {
     if (!newNote.trim()) return;
 
     try {
-      await fetch(`/api/customers/${customerId}/notes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note: newNote })
-      });
+      const { data } = await api.post(`/note/${customerId}`, { content: newNote })
+      setNotes(prev => [data, ...prev])
       setNewNote("");
-      const response = await fetch(`/api/customers/${customerId}`);
-      const data = await response.json();
-      setCustomer(data);
     } catch (error) {
       console.error("Error adding note:", error);
+      alert('Failed to complete the request')
     }
   };
 
-  const handleSendMatch = async (matchCustomerId: string) => {
+  const handleSendMatch = async (customerId: string, recommendedId: string) => {
     try {
-      // await fetch(`/api/customers/${customerId}/send-match`, {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify({ matchCustomerId })
-      // });
+      const { data } = await api.post("/customer/match/sent", { customerId, recommendedId })
+      setSentMatches(prev => [data, ...prev])
       alert("Match sent successfully! ✨");
     } catch (error) {
       console.error("Error sending match:", error);
+      alert('Failed to complete the request')
     }
   };
 
@@ -355,15 +375,16 @@ export default function CustomerDetailPage() {
                   >
                     Profile Overview
                   </button>
-                  {/* <button
+                  <button
                     onClick={() => setActiveTab("notes")}
                     className={`px-6 py-3 font-medium transition-colors ${activeTab === "notes"
                       ? "text-[#0F766E] border-b-2 border-[#0F766E]"
                       : "text-gray-500 hover:text-gray-700"
                       }`}
                   >
-                    Matchmaker Notes ({customer?.notes?.length || 0})
+                    Matchmaker Notes ({notes?.length || 0})
                   </button>
+
                   <button
                     onClick={() => setActiveTab("sent")}
                     className={`px-6 py-3 font-medium transition-colors ${activeTab === "sent"
@@ -371,8 +392,8 @@ export default function CustomerDetailPage() {
                       : "text-gray-500 hover:text-gray-700"
                       }`}
                   >
-                    Previously Sent ({customer?.sentMatches?.length || 0})
-                  </button> */}
+                    Previously Sent ({sentMatches?.length || 0})
+                  </button>
                 </div>
 
                 <div className="p-6">
@@ -531,8 +552,8 @@ export default function CustomerDetailPage() {
                       </div>
 
                       <div className="space-y-3">
-                        {customer?.notes && customer?.notes.length > 0 ? (
-                          customer?.notes.map((note: any, idx: number) => (
+                        {notes && notes.length > 0 ? (
+                          notes.map((note: any, idx: number) => (
                             <div key={idx} className="bg-gray-50 rounded-lg p-4 border border-gray-100">
                               <p className="text-gray-700">{note.content}</p>
                               <p className="text-xs text-gray-400 mt-2">{new Date(note.createdAt).toLocaleDateString()}</p>
@@ -551,14 +572,25 @@ export default function CustomerDetailPage() {
                   {/* Sent Matches Tab */}
                   {activeTab === "sent" && (
                     <div className="space-y-3">
-                      {customer?.sentMatches && customer?.sentMatches.length > 0 ? (
-                        customer?.sentMatches.map((match: any, idx: number) => (
-                          <div key={idx} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100">
+                      {sentMatches && sentMatches.length > 0 ? (
+                        sentMatches.map((match: any, idx: number) => (
+                          <div
+                            key={match.id ?? idx}
+                            className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100"
+                          >
                             <div>
-                              <p className="font-medium text-gray-800">{match.name}</p>
-                              <p className="text-sm text-gray-500">Compatibility: {match.score}%</p>
+                              <p className="font-medium text-gray-800">
+                                {match?.recommended?.firstName} {match?.recommended?.lastName}
+                              </p>
+                              <p className="text-sm text-gray-500">
+                                {match?.recommended?.profession} • {match?.recommended?.city}
+                              </p>
                             </div>
-                            <p className="text-xs text-gray-400">{new Date(match.sentDate).toLocaleDateString()}</p>
+
+                            <div className="text-xs text-gray-400">
+                              {match?.recommended?.religion}
+                              {match?.sentAt && <p>{new Date(match?.sentAt).toLocaleString()}</p>}
+                            </div>
                           </div>
                         ))
                       ) : (
@@ -648,8 +680,12 @@ export default function CustomerDetailPage() {
                           View Match Details
                         </button>
                         <button
-                          onClick={() => handleSendMatch(match.customerId)}
-                          className="flex-1 px-3 py-1.5 text-sm bg-[#0F766E] text-white rounded-lg hover:bg-[#1a8a82] transition-colors flex items-center justify-center gap-1"
+                          onClick={() => {
+                            setSelectedMatchForSend(match);
+                            setShowSendModal(true);
+                            // handleSendMatch(customerId, match.customerId)
+                          }}
+                          className="cursor-pointer flex-1 px-3 py-1.5 text-sm bg-[#0F766E] text-white rounded-lg hover:bg-[#1a8a82] transition-colors flex items-center justify-center gap-1"
                         >
                           <Send className="w-3 h-3" />
                           Send Match
@@ -713,7 +749,7 @@ export default function CustomerDetailPage() {
             <div>
               <h3 className="font-serif text-lg text-gray-800 mb-2 flex items-center gap-2">
                 <Heart className="w-4 h-4 text-[#C8A96A]" />
-                Matchmaker's Note
+                AI powered Key Inshights ✨
               </h3>
               <div className="bg-amber-50/30 p-4 rounded-lg border border-amber-100">
                 <p className="text-gray-700 leading-relaxed">
@@ -799,8 +835,10 @@ export default function CustomerDetailPage() {
               </button>
               <button
                 onClick={() => {
-                  handleSendMatch(selectedMatch?.customerId);
+                  // handleSendMatch(customerId, selectedMatch?.customerId);
+                  setSelectedMatchForSend(selectedMatch);
                   setIsModalOpen(false);
+                  setShowSendModal(true);
                 }}
                 className="flex-1 px-4 py-2 bg-gradient-to-r from-[#0F766E] to-[#1a8a82] text-white rounded-lg hover:shadow-lg transition-all flex items-center justify-center gap-2"
               >
@@ -811,6 +849,25 @@ export default function CustomerDetailPage() {
           </div>
         )}
       </Modal>
+      {selectedMatchForSend && (
+        <SendMatchModal
+          isOpen={showSendModal}
+          onClose={() => {
+            setShowSendModal(false);
+            setSelectedMatchForSend(null);
+          }}
+          onConfirm={() => handleSendMatch(customerId, selectedMatchForSend?.customerId)}
+          matchData={{
+            customerId: selectedMatchForSend.customerId,
+            score: selectedMatchForSend.score,
+            aiExplanation: {
+              matchmaker_note: selectedMatchForSend.aiExplanation.matchmaker_note,
+              key_factors: selectedMatchForSend.aiExplanation.key_factors
+            }
+          }}
+          customerName={`${customer?.firstName} ${customer?.lastName}`}
+        />
+      )}
     </Protected>
   );
 }

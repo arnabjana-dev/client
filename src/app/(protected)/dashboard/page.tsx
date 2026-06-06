@@ -7,6 +7,7 @@ import Link from "next/link";
 import Protected from "@/components/Protected";
 import api from "@/lib/axios";
 import FullScreenLoader from "@/components/FullScreenLoader";
+import { Button } from "@/components/ui/button";
 
 const stageColors = {
     PROFILE_REVIEW: "bg-amber-50 text-amber-700 border-amber-200",
@@ -40,7 +41,6 @@ export default function Dashboard() {
             setLoading('Gathering your clients')
             const { data } = await api.get("/customer/all")
             setCustomers(data?.data)
-            console.log(data?.data)
         } catch (error: any) {
             alert(`${error?.message}`)
         } finally {
@@ -68,6 +68,10 @@ export default function Dashboard() {
         activeDiscussion: customers.filter(c => c.stage === "ACTIVE_DISCUSSION").length,
         matched: customers.filter(c => c.stage === "MATCHED").length
     };
+    const handleLogout = async () => {
+        await localStorage.removeItem('token')
+        window.location.href = "/login";
+    }
 
     return (
         <Protected>
@@ -96,6 +100,7 @@ export default function Dashboard() {
                                     <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-amber-600 rounded-full flex items-center justify-center">
                                         <span className="text-white font-serif">MK</span>
                                     </div> */}
+                                    <Button onClick={handleLogout} className="bg-slate-200 cursor-pointer px-4">Logout</Button>
                                 </div>
                             </div>
 
